@@ -1,0 +1,551 @@
+var token = "";
+var telegramUrl = "https://api.telegram.org/bot" + token;
+var webAppUrl = ""
+
+function getMe() {
+  var url = telegramUrl + "/getMe";
+  var response = UrlFetchApp.fetch(url);
+  Logger.log(response.getContentText());
+}
+
+function setWebHook() {
+  var url = telegramUrl + "/setWebhook?url=" + webAppUrl;
+  var response = UrlFetchApp.fetch(url);
+  Logger.log(response.getContentText());
+}
+
+function doGet(e) {
+  return HtmlService.createHtmlOutput("Hello" + JSON.stringify(e)); 
+}
+
+function getNames(exercise) {
+  //obtain a list of names from the google spreadsheet and create keyboard
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  var keyBoard = {
+    "inline_keyboard": [] 
+  }
+  for (var i = 3; i < data.length; i+=2) {
+    Logger.log('Name: ' + data[i][0]);
+    var nameOpt = [{"text": data[i][0], 'callback_data': "Name " + String(i) + " " + exercise}];
+    keyBoard["inline_keyboard"].push(nameOpt);
+  }
+  keyBoard["resize_keyboard"] = true;
+  keyBoard["one_time_keyboard"] = true;
+  Logger.log(JSON.stringify(keyBoard));
+  return keyBoard;
+}
+
+function getExercises(command) {
+  var keyBoard = {
+    "inline_keyboard": [
+      [{"text": "Arms", 'callback_data': 'Exercise Arms ' + command}],
+      [{"text": "Butt", 'callback_data': 'Exercise Butt ' + command}],
+      [{"text": "Cardio", 'callback_data': 'Exercise Cardio ' + command}],
+      [{"text": "Core", 'callback_data': 'Exercise Core ' + command}],
+      [{"text": "Legs", 'callback_data': 'Exercise Legs ' + command}],
+      [{"text": "Stretching", 'callback_data': 'Exercise Stretching ' + command}]
+    ],
+    "resize_keyboard": true,
+    "one_time_keyboard":true
+  };
+  Logger.log(keyBoard);
+  return keyBoard;
+}
+
+//stores chat id and username of user
+function storeUserInfo(id, username, name) { //check if name in the excel sheet
+  //name = "lisa";
+  //username = "elgozz";
+  //id = String(571896291);
+  var userProperties = PropertiesService.getUserProperties();
+  if (name == "group") {
+    var groupData = [id];
+    groupData = JSON.stringify(groupData);
+    userProperties.setProperty("group", groupData);
+    sendText2(id, "Group pushed.");
+    return true;
+  }
+  var nameRow = getRowfromName(name);
+  if (nameRow == -1) {
+     return false; 
+  }
+  var userData = [id, username]
+  userData = JSON.stringify(userData);  
+  userProperties.setProperty(String(nameRow), userData);
+  sendText2(id, "Successfully started.");
+  return true;
+}
+
+function getFontColour(exercise) {
+  if (exercise == "Arms") {
+    return "magenta";
+  }
+  else if (exercise == "Butt") {
+    return "purple";
+  }
+  else if (exercise == "Cardio") {
+    return "red";
+  }
+  else if (exercise == "Core") {
+    return "green"; 
+  }
+  else if (exercise == "Legs") {
+    return "blue";
+  }
+  else if (exercise == "Stretching") {
+    return "orange";
+  }
+  
+}
+function sendText(chatId, text, keyBoard) {
+  //if (keyBoard.inline_keyboard){
+   var options = {
+    'method': "post",
+    'payload': {
+       'method': "sendMessage",
+       'chat_id': String(chatId),
+       'text': text,
+       'parse_mode': "HTML",
+       'reply_markup': JSON.stringify(keyBoard)
+     }
+   };
+  var response = UrlFetchApp.fetch(telegramUrl + "/", options);
+  //GmailApp.sendEmail(Session.getEffectiveUser().getEmail(), "Message sent to bot", response.getContentText());
+  Logger.log(response.getContentText());
+}
+
+function sendText2(chatId, text) {
+  //GmailApp.sendEmail(Session.getEffectiveUser().getEmail(), "Message sent to bot",url);
+  var options = {
+    'method': "post",
+    'payload': {
+       'method': "sendMessage",
+       'chat_id': String(chatId),
+       'text': text,
+       'parse_mode': "HTML",
+     }
+   };
+  var response = UrlFetchApp.fetch(telegramUrl + "/", options);
+  Logger.log(response.getContentText()); 
+}
+
+//for each individual, collate their total exercises that are strikethroughed for all the weeks, 
+//and store in an object with the key being the exercise, the values being the nested keys, and values are the names
+//for the values ones, get the date of the last one completed
+//get the relevant data for the exercise and sort them based on lowest (on top)
+
+function calculateData() { //take into consideration whether strike through????
+  var numberCompleted = {
+    "arms": {},
+    "butt": {},
+    "cardio": {},
+    "core": {},
+    "legs": {},
+    "stretching":{}
+  }
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  var months = ["Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec"];
+  var exercises = ["arms", "butt", "cardio", "core", "legs", "stretching"];
+  var lastCol = sheet.getLastColumn();
+  for (var i = 3; i < data.length; i+=2) {
+     var individual = {
+       'name': "",
+       'arms': 0,
+       'last_completed_arms':0,
+       'butt': 0,
+       'last_completed_butt':0,
+       'cardio': 0,
+       'last_completed_cardio':0,
+       'core': 0,
+       'last_completed_core':0,
+       'legs': 0,
+       'last_completed_legs':0,
+       'stretching': 0,
+       'last_completed_stretching':0
+     }
+    individual.name = data[i][0];
+    for (var j = 1; j < lastCol; j++) {
+      if (data[i][j] != "") { //can optimise this repetition?
+        var exercise = data[i][j];
+        for (var e = 0 ; e < exercises.length; e++) {
+          if (exercise.toLowerCase() == exercises[e]) {
+            individual[exercises[e]] += 1;
+            //need to take into consideration whether it is already completed or not...strikethrough
+            individual["last_completed_"+exercises[e]] = data[2][j].getDate() + " " + months[data[2][j].getMonth()];
+          }
+        }
+        if (data[i+1][j] != "") {
+          var exercise = data[i+1][j];
+          for (var e = 0 ; e < exercises.length; e++) {
+            if (exercise.toLowerCase() == exercises[e]) {
+              individual[exercises[e]] += 1;
+              individual["last_completed_"+exercises[e]] = data[2][j].getDate() + " " + months[data[2][j].getMonth()];
+            }
+          }
+        }
+      }
+    }
+    //Logger.log(individual);
+    numberCompleted = incorporateData(individual, numberCompleted);
+  }
+  //stores the data
+  var scriptProperties = PropertiesService.getScriptProperties();
+  for (var exe in numberCompleted) {
+      numberCompleted[exe] = JSON.stringify(numberCompleted[exe]);
+  }
+  Logger.log(numberCompleted);
+  scriptProperties.setProperties(numberCompleted);
+}
+
+function incorporateData(individual, numberCompleted) {
+  var exercises = ["arms", "butt", "cardio", "core", "legs", "stretching"]
+  for (var i = 0; i < exercises.length; i++) {
+    var valueCompleted = String(individual[exercises[i]]);
+    if (!numberCompleted[exercises[i]].hasOwnProperty(valueCompleted)) { //if dont contain the value yet e.g. 2
+       numberCompleted[exercises[i]][valueCompleted] = []; 
+    }
+    numberCompleted[exercises[i]][valueCompleted].push(individual["name"]);
+  }
+  return numberCompleted;
+}
+
+
+function getData(exercise) {
+  exercise = "Arms";
+  exercise = exercise.toLowerCase();
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var strData = scriptProperties.getProperty(exercise);
+  data = JSON.parse(strData);;
+  var returnStr = "";
+  for (var key in data) {
+    returnStr += key + " times: ";
+    Logger.log(data[key]);
+    for (var name in data[key]) {
+      returnStr += data[key][name] + ", ";
+    }
+    returnStr += "\n";
+  }
+  //returnStr = returnStr.replace(/,\s*$/, "");
+  Logger.log(returnStr);
+  return returnStr;
+  //e.g. Arms:
+  /*
+  {"0":["Atiqah","Jeraldine","Jieying","Kristy","Stanley","Thania"],
+  "1":["Alicia","Denise ","Emmeline","Isabe
+ lle","Jel","JJ","Junqing","Keith","Lejia","Nicole","Pong","Priya","Yiik","Zeke"],
+  "2":["James","Lisa","Luke","Shane","Timothy","Tyrone","Vicki ","Xiang Xian","Xin Qian","Yanyi","Yi Shiuan"],
+  "3":["Saiyan","Suejin"]}
+  */
+}
+
+//strike through for the spreadsheet
+//iterate through and if not strikethrough, then strikethrough it
+//if there is multiple options available, choose the latest one
+//maybe set that can only nominate when video sent???
+  //must search through BOTH rows
+
+function submitVideo(nameRow, exercise) {
+   exercise = exercise.toLowerCase();
+   var submitted = false;
+   var sheet = SpreadsheetApp.getActiveSheet();
+   var data = sheet.getDataRange().getValues();
+   var lastCol = sheet.getLastColumn();
+   var range = sheet.getRange(nameRow+1,2,2,lastCol-1);
+   var results = range.getFontLines();
+   var i = 0;
+   for (var j = lastCol-1; j > 0; j--) { //iterate from the back
+     if (data[nameRow][j] != "") {
+       Logger.log(data[nameRow][j]);
+       Logger.log(data[nameRow+1][j]);
+       if (data[nameRow][j].toLowerCase() == exercise &&results[i][j-1] != "line-through") {
+          var cell = sheet.getRange(nameRow+1,j+1);              
+          cell.setFontLine("line-through");  
+          submitted = true;
+          return submitted;
+       }
+       else if (data[nameRow+1][j].toLowerCase() == exercise && results[i+1][j-1] != "line-through") {
+          var cell = sheet.getRange(nameRow+2,j+1);              
+          cell.setFontLine("line-through"); 
+          submitted = true;
+          return submitted;
+       }
+     }
+   }
+   return submitted;
+}
+    
+//CALLED WHEN NOMINATED, replace data
+
+function updateData(name, exercise) {
+ // name = "Kristy";
+  name = "Denise";
+  exercise = "Arms";
+  exercise = exercise.toLowerCase();
+  var data = getData(exercise);
+  Logger.log(data);
+  data = JSON.parse(data);
+  for (var key in data) {
+    Logger.log(data[key]);
+    var lst = data[key];
+    if (lst.includes(name)) {
+      var index = lst.indexOf(name);
+      //Logger.log(index);
+      lst.splice(index, 1);
+      var newValue = parseInt(key)+1;
+      if (data.hasOwnProperty(String(newValue))) {
+        data[String(newValue)].push(name);
+        break;
+      }
+      else {
+        data[String(newValue)] = [];
+        data[String(newValue)].push(name);
+        break;
+      }
+    }
+  }
+  data = JSON.stringify(data);
+  var scriptProperties = PropertiesService.getScriptProperties();
+  scriptProperties.setProperty(exercise, data);
+  Logger.log(getData(exercise));;
+}
+
+function getUserData() {
+  var userProperties = PropertiesService.getUserProperties();
+  var groupData = userProperties.getProperty("group");
+  Logger.log(groupData);
+}
+
+function resetUserData() {
+  userdata = {
+    
+  } 
+  var userProperties = PropertiesService.getUserProperties();
+  userProperties.setProperties(userdata);
+}
+
+//to do: can you nominate in the first place or not.
+//hide inline keyboard
+//colours
+//post to group
+//check if already nominated for that exercise
+//ssid
+//accepr or decline nomination
+
+function getRowfromName(name) {
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  for (var i = 3; i < data.length; i+=2) {
+    if (name.toLowerCase() == data[i][0].toLowerCase()) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+//check outstanding exercises and due dates for them
+//iterate through the dates and check if strikethrough for the exercises
+function checkOutstanding(id, nameRow) {
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  var lastCol = sheet.getLastColumn();
+  var months = ["Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec"];
+  var range = sheet.getRange(nameRow+1,2,2,lastCol-1);
+  var results = range.getFontLines();
+  var outstanding = "Here are your outstanding records: \n";
+  var i = 0;
+  for (var j = 0; j < lastCol-1; j++) {
+    if (data[nameRow][j+1] != "" && results[i][j] != "line-through") { //outstanding
+      outstanding += data[nameRow][j+1] + " ";
+      if (data[nameRow+1][j+1] != "" && results[i+1][j] != "line-through") {
+        outstanding += data[nameRow+1][j+1];
+      }
+      var date = data[2][j+1];
+      outstanding += " - " + date.getDate() + " " + months[date.getMonth()] + "\n";                                                 
+    }
+  }
+  Logger.log(outstanding);
+  return outstanding;
+}
+
+function nominateSpreadsheet(name, exercise) {//can optimise this to just be last column-3.
+  name = 7;
+  exercise = "Arms";
+  var nominate = false;
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  //obtains current date
+  var date = new Date("04-25-2020");
+  Logger.log(date.getTime());
+  var i = 1;
+  while (i < data[2].length) {
+    Logger.log(data[2][i]);
+    if (date.getTime() > data[2][i+2].getTime()) {
+      Logger.log("i: "+i);
+      i += 3;
+      continue;
+    }
+    else {
+      var j = 0;
+      while (j <= 2) {
+        Logger.log("j: " + j);
+        if (date.getTime() <= data[2][j+i].getTime()) {
+          Logger.log(data[name][0]);
+          if (data[name][j+i] == "") {
+            var textcolour = getFontColour(exercise);
+            sheet.getRange(name+1,j+i+1).setValue(exercise);
+            sheet.getRange(name+1,j+i+1).setFontColor(textcolour);
+            sheet.getRange(name+1,j+i+1).setFontWeight("bold");
+            nominate = true;
+          }
+          else if (data[name][j+i] != exercise && data[name+1][j+i] == "") { //if the person hasnt been nominated for that exercise and not at quota
+            var textcolour = getFontColour(exercise);
+            sheet.getRange(name+2, j+i+1).setValue(exercise);
+            sheet.getRange(name+2, j+i+1).setFontColor(textcolour);
+            sheet.getRange(name+2, j+i+1).setFontWeight("bold");
+            nominate = true;
+          }
+          return nominate;
+        }
+        else {
+         j++; 
+        }
+      }
+      break; //why is there abreak here
+    }
+  }
+  
+  if (i >= data[2].length) {
+    Logger.log("Haven't included the date.");
+  }
+}
+
+function doPost(e) {
+  var contents = JSON.parse(e.postData.contents);
+  //GmailApp.sendEmail(Session.getEffectiveUser().getEmail(), "Message sent to bot", JSON.stringify(contents,null,4));
+  var data = SpreadsheetApp.getActiveSheet().getDataRange().getValues();
+  if (contents.callback_query) {
+    var id_callback = contents.callback_query.from.id;
+    var name = contents.callback_query.from.username;
+    var callback_query_data = contents.callback_query.data.split(" ");
+    if (callback_query_data[0] == "Name") {
+      var nameRow = callback_query_data[1];
+      var exercise = callback_query_data[2];
+      //sendText2(id_callback, "HERE");
+      //sendText2(id_callback, nameRow);
+      nameRow = parseInt(nameRow);
+      if (nominateSpreadsheet(nameRow, exercise)) {
+        //send to the user as well, send to the group
+        sendText2(id_callback, "HEY");
+        var userProperties = PropertiesService.getUserProperties();
+        var groupData = userProperties.getProperty("group");
+        groupData = JSON.parse(groupData);
+        sendText2(parseInt(groupData[0]), data[nameRow][0] + " has been nominated by @" + name + " for " + exercise);
+        updateData(data[nameRow][0], exercise);
+        if (userProperties.hasOwnProperty(String(nameRow))) {
+            var userData = userProperties.getProperty(String(nameRow));
+            userData = JSON.parse(userData);
+            sendText2(parseInt(userData[0]), "You have been nominated by @" + name + " for " + exercise);
+        }
+        //updateData(data[nameRow][0], exercise); //NOT CALLED FOR SOME FKING REASON>
+      }
+      else {
+        sendText2(id_callback, data[nameRow][0] + " already at quota/has been nominated for that exercise, please nominate another person.");
+        handleNominate(id_callback, exercise);
+      }
+    }
+    else if (callback_query_data[0] == "Exercise") {
+      exercise = callback_query_data[1];
+      sendText2(id_callback, exercise);
+      if (callback_query_data[2] == "nominate") {
+        handleNominate(id_callback, exercise);
+      }
+      else if (callback_query_data[2] == "whotonominate") {
+        var dataExercise = getData(exercise);
+        sendText2(id_callback, "Here you go! :) \n" + dataExercise);
+      }
+    }
+  }
+  else if (contents.message) {
+    var text = contents.message.text;
+    var id = contents.message.chat.id;
+    var username = contents.message.from.username;
+    var name = contents.message.chat.first_name + " " + contents.message.chat.last_name;
+    var text = contents.message.text; 
+    //sendText2(id, text);
+    if (contents.message.hasOwnProperty("entities")) {
+      //Logger.log("HERE");
+      if (contents.message.entities[0].type == "bot_command") {
+        //sendText2(id, "yay");
+        handleCommands(id, text, username);
+      }
+    }
+  }
+}
+
+function handleNominate(id, exercise) {
+   var keyBoard = getNames(exercise);
+   sendText(id, "Who would you like to nominate?", keyBoard); 
+}
+
+function handleCommands(id, text, username) {
+  if (text == "/nominate") {
+     var keyBoard = getExercises("nominate");
+     sendText(id, "What exercise are you nominating for?", keyBoard);
+  }
+  else if (text == "/whotonominate") { //get data
+    var keyBoard = getExercises("whotonominate");
+    sendText(id, "What exercise are you interested in finding out about?", keyBoard);    
+  }
+  else if (text.includes("/submit")) { //submit video
+    var command = text.split(" ");
+    var name = command[1];
+    var exercise = command[2];
+    var exercises = ["arms", "butt", "cardio", "core", "legs", "stretching"];
+    if (exercises.includes(exercise)) {      
+      var nameRow = getRowfromName(name);
+      if (nameRow != -1) {
+        if (submitVideo(nameRow, exercise)) {
+          sendText2(id, "Successfully submitted. Nice work " + name + "!");
+        }
+        else {
+          sendText2(id, "You aren't actually required to do this... but good job!");
+        }
+      }
+      else {
+        sendText2(id, "No such person.");
+      }
+    }
+    else {
+      sendText2(id, "No such exercise.");
+    }
+  }
+  else if (text.includes("/checkoutstanding")) { //outstanding
+    var command = text.split(" ");
+    var name = command[1];
+    var nameRow = getRowfromName(name);
+    if (nameRow != -1) {
+      sendText2(id,checkOutstanding(id, nameRow));
+    }
+    else {
+      sendText2(id, "No such person.");
+    }
+  }
+  else if (text == "/help") {
+    sendText2(id, "Hi! This is your friendly bot for Paradigymmers! There are 4 commands in total (5, including this.) \n "
+              + "/nominate: This will prompt you to nominate someone. \n"
+              + "/whotonominate: This will provide data on the number of times an exercise is done by each person, so pick someone who has " 
+              + "not done the exercise often! \n"
+              + "/submit: Please use this command while sending in your video! "
+              + "When submitting a video, please enter /submit (name) (exercise). e.g. /submit yiik arms \n "
+              + "/checkoutstanding: This command enables you to check the outstanding records of a person. To use it, enter /checkoutstanding (name)"
+              + "e.g. /checkoutstanding yiik \n"
+              + "When starting, please do /start (name)");
+  }
+  else if (text.includes("/start")) { //need to press /start (name)
+    sendText2(id, "Welcome to the paradigym bot!");
+    var name = text.split(" ")[1];
+    storeUserInfo(id, username, name);
+  }
+}
