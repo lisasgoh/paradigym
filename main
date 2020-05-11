@@ -1,6 +1,6 @@
 var token = "";
 var telegramUrl = "https://api.telegram.org/bot" + token;
-var webAppUrl = ""
+var webAppUrl = "";
 
 function getMe() {
   var url = telegramUrl + "/getMe";
@@ -54,10 +54,7 @@ function getExercises(command) {
 }
 
 //stores chat id and username of user
-function storeUserInfo(id, username, name) { //check if name in the excel sheet
-  //name = "lisa";
-  //username = "elgozz";
-  //id = String(571896291);
+function storeUserInfo(id, username, name) { //check if name in the excel sheet //called when /start command
   var userProperties = PropertiesService.getUserProperties();
   if (name == "group") {
     var groupData = [id];
@@ -67,13 +64,14 @@ function storeUserInfo(id, username, name) { //check if name in the excel sheet
     return true;
   }
   var nameRow = getRowfromName(name);
-  if (nameRow == -1) {
-     return false; 
+  if (nameRow == -1) { //this means the person didnt spell name correctly
+    Logger.log("Incorrect name!");
+    return false; 
   }
   var userData = [id, username]
   userData = JSON.stringify(userData);  
   userProperties.setProperty(String(nameRow), userData);
-  sendText2(id, "Successfully started.");
+  Logger.log(userData);
   return true;
 }
 
@@ -130,10 +128,6 @@ function sendText2(chatId, text) {
   Logger.log(response.getContentText()); 
 }
 
-//for each individual, collate their total exercises that are strikethroughed for all the weeks, 
-//and store in an object with the key being the exercise, the values being the nested keys, and values are the names
-//for the values ones, get the date of the last one completed
-//get the relevant data for the exercise and sort them based on lowest (on top)
 
 function calculateData() { //take into consideration whether strike through????
   var numberCompleted = {
@@ -213,79 +207,96 @@ function incorporateData(individual, numberCompleted) {
 
 
 function getData(exercise) {
-  exercise = "Arms";
+  //exercise = "Arms";
   exercise = exercise.toLowerCase();
   var scriptProperties = PropertiesService.getScriptProperties();
   var strData = scriptProperties.getProperty(exercise);
-  data = JSON.parse(strData);;
+  Logger.log(strData);
+  var data = JSON.parse(strData);
+  Logger.log(data);
   var returnStr = "";
   for (var key in data) {
     returnStr += key + " times: ";
-    Logger.log(data[key]);
+    //Logger.log(data[key]);
     for (var name in data[key]) {
       returnStr += data[key][name] + ", ";
     }
-    returnStr += "\n";
+    returnStr += "\n \n";
   }
-  //returnStr = returnStr.replace(/,\s*$/, "");
   Logger.log(returnStr);
   return returnStr;
-  //e.g. Arms:
-  /*
-  {"0":["Atiqah","Jeraldine","Jieying","Kristy","Stanley","Thania"],
-  "1":["Alicia","Denise ","Emmeline","Isabe
- lle","Jel","JJ","Junqing","Keith","Lejia","Nicole","Pong","Priya","Yiik","Zeke"],
-  "2":["James","Lisa","Luke","Shane","Timothy","Tyrone","Vicki ","Xiang Xian","Xin Qian","Yanyi","Yi Shiuan"],
-  "3":["Saiyan","Suejin"]}
-  */
 }
 
-//strike through for the spreadsheet
-//iterate through and if not strikethrough, then strikethrough it
-//if there is multiple options available, choose the latest one
-//maybe set that can only nominate when video sent???
-  //must search through BOTH rows
 
-function submitVideo(nameRow, exercise) {
+function submitVideo(username, exercise) {
+  var submitted = 0;
+  var userProperties = PropertiesService.getUserProperties();
+  var userData = userProperties.getProperties();
+  var reqUser = "";
+  for (var user in userData) {
+    Logger.log(user);
+    if (userData[user].includes(username)) {
+       reqUser = user;
+       break;
+    }
+  }
+  if (reqUser == "") {
+    Logger.log("Your details are not included yet.");
+    return -1;
+  }
+   var nameRow = parseInt(reqUser);
+   //exercise = "Cardio";
    exercise = exercise.toLowerCase();
-   var submitted = false;
    var sheet = SpreadsheetApp.getActiveSheet();
    var data = sheet.getDataRange().getValues();
    var lastCol = sheet.getLastColumn();
    var range = sheet.getRange(nameRow+1,2,2,lastCol-1);
    var results = range.getFontLines();
+   nameRow = parseInt(nameRow);
    var i = 0;
    for (var j = lastCol-1; j > 0; j--) { //iterate from the back
      if (data[nameRow][j] != "") {
        Logger.log(data[nameRow][j]);
        Logger.log(data[nameRow+1][j]);
-       if (data[nameRow][j].toLowerCase() == exercise &&results[i][j-1] != "line-through") {
+       if (data[nameRow][j].toLowerCase() == exercise && results[i][j-1] != "line-through") {
+         Logger.log("here: "+j + " " + i);
           var cell = sheet.getRange(nameRow+1,j+1);              
           cell.setFontLine("line-through");  
-          submitted = true;
-          return submitted;
+          submitted = 1;
+          break;
        }
        else if (data[nameRow+1][j].toLowerCase() == exercise && results[i+1][j-1] != "line-through") {
+         Logger.log("there: "+j + " " + i);
           var cell = sheet.getRange(nameRow+2,j+1);              
           cell.setFontLine("line-through"); 
-          submitted = true;
-          return submitted;
+          submitted = 1;
+          break;
        }
      }
    }
-   return submitted;
+  Logger.log(submitted);
+  if (submitted == 1) {
+    if (j % 3 == 0) { //if saturday, then add into leaderboard 
+      addLeaderboard(nameRow, exercise);
+    }
+  }
+  Logger.log(submitted);
+  return submitted;
 }
     
 //CALLED WHEN NOMINATED, replace data
 
 function updateData(name, exercise) {
- // name = "Kristy";
-  name = "Denise";
-  exercise = "Arms";
+  //name = "Denise";
+  //exercise = "Arms";
   exercise = exercise.toLowerCase();
-  var data = getData(exercise);
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var strData = scriptProperties.getProperty(exercise);
+  var data = JSON.parse(strData);
   Logger.log(data);
-  data = JSON.parse(data);
+  Logger.log(name);
+  Logger.log(exercise);
+  //data = JSON.parse(data);
   for (var key in data) {
     Logger.log(data[key]);
     var lst = data[key];
@@ -313,12 +324,12 @@ function updateData(name, exercise) {
 
 function getUserData() {
   var userProperties = PropertiesService.getUserProperties();
-  var groupData = userProperties.getProperty("group");
-  Logger.log(groupData);
+  var userData = userProperties.getProperties()
+  Logger.log(userData);
 }
 
 function resetUserData() {
-  userdata = {
+  var userdata = {
     
   } 
   var userProperties = PropertiesService.getUserProperties();
@@ -332,6 +343,7 @@ function resetUserData() {
 //check if already nominated for that exercise
 //ssid
 //accepr or decline nomination
+//left data on whether the person has already been nominated.
 
 function getRowfromName(name) {
   var sheet = SpreadsheetApp.getActiveSheet();
@@ -346,98 +358,346 @@ function getRowfromName(name) {
 
 //check outstanding exercises and due dates for them
 //iterate through the dates and check if strikethrough for the exercises
-function checkOutstanding(id, nameRow) {
+function checkOutstanding(nameRow) {
+  //nameRow = 25;
   var sheet = SpreadsheetApp.getActiveSheet();
   var data = sheet.getDataRange().getValues();
   var lastCol = sheet.getLastColumn();
   var months = ["Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec"];
   var range = sheet.getRange(nameRow+1,2,2,lastCol-1);
   var results = range.getFontLines();
+  Logger.log(results);
   var outstanding = "Here are your outstanding records: \n";
   var i = 0;
-  for (var j = 0; j < lastCol-1; j++) {
-    if (data[nameRow][j+1] != "" && results[i][j] != "line-through") { //outstanding
-      outstanding += data[nameRow][j+1] + " ";
+  for (var j = 0; j < lastCol-1; j++) {//got error
+    if (data[nameRow][j+1] != "") { //outstanding
+      if (results[i][j] != "line-through") {
+        outstanding += data[nameRow][j+1] + " ";
+        var date = data[2][j+1];
+        outstanding += " - " + date.getDate() + " " + months[date.getMonth()] + "\n";    
+      }
       if (data[nameRow+1][j+1] != "" && results[i+1][j] != "line-through") {
         outstanding += data[nameRow+1][j+1];
-      }
-      var date = data[2][j+1];
-      outstanding += " - " + date.getDate() + " " + months[date.getMonth()] + "\n";                                                 
+        var date = data[2][j+1];
+        outstanding += " - " + date.getDate() + " " + months[date.getMonth()] + "\n";    
+      }                                                
     }
   }
   Logger.log(outstanding);
   return outstanding;
 }
 
-function nominateSpreadsheet(name, exercise) {//can optimise this to just be last column-3.
-  name = 7;
-  exercise = "Arms";
-  var nominate = false;
-  var sheet = SpreadsheetApp.getActiveSheet();
-  var data = sheet.getDataRange().getValues();
-  //obtains current date
-  var date = new Date("04-25-2020");
-  Logger.log(date.getTime());
-  var i = 1;
-  while (i < data[2].length) {
-    Logger.log(data[2][i]);
-    if (date.getTime() > data[2][i+2].getTime()) {
-      Logger.log("i: "+i);
-      i += 3;
-      continue;
-    }
-    else {
-      var j = 0;
-      while (j <= 2) {
-        Logger.log("j: " + j);
-        if (date.getTime() <= data[2][j+i].getTime()) {
-          Logger.log(data[name][0]);
-          if (data[name][j+i] == "") {
-            var textcolour = getFontColour(exercise);
-            sheet.getRange(name+1,j+i+1).setValue(exercise);
-            sheet.getRange(name+1,j+i+1).setFontColor(textcolour);
-            sheet.getRange(name+1,j+i+1).setFontWeight("bold");
-            nominate = true;
-          }
-          else if (data[name][j+i] != exercise && data[name+1][j+i] == "") { //if the person hasnt been nominated for that exercise and not at quota
-            var textcolour = getFontColour(exercise);
-            sheet.getRange(name+2, j+i+1).setValue(exercise);
-            sheet.getRange(name+2, j+i+1).setFontColor(textcolour);
-            sheet.getRange(name+2, j+i+1).setFontWeight("bold");
-            nominate = true;
-          }
-          return nominate;
-        }
-        else {
-         j++; 
-        }
-      }
-      break; //why is there abreak here
-    }
+function addLeaderboard(nameRow, exercise) { //namerow is integer
+  //increase nomination rights by 2 each
+  //nameRow = 39;
+  //exercise = "legs";
+  var documentProperties = PropertiesService.getDocumentProperties();
+  var exerciseData = documentProperties.getProperty(exercise);
+  exerciseData = JSON.parse(exerciseData);
+  Logger.log(exerciseData);
+  if (exerciseData.length < 2) {
+    Logger.log("Pushed");
+    exerciseData.push(nameRow);
   }
-  
-  if (i >= data[2].length) {
-    Logger.log("Haven't included the date.");
-  }
+  exerciseData = JSON.stringify(exerciseData);
+  documentProperties.setProperty(exercise, exerciseData);
 }
 
+function resetLeaderboard() {
+  var exerciseData = {
+    "arms": [],
+    "butt": [],
+    "cardio": [],
+    "core": [],
+    "legs": [],
+    "stretching":[]
+  } 
+  for (var exercise in exerciseData) {
+    exerciseData[exercise] = JSON.stringify(exerciseData[exercise]); 
+  }
+  var documentProperties = PropertiesService.getDocumentProperties();
+  documentProperties.setProperties(exerciseData);
+}
+
+function getLeaderboard() {
+  var returnStr = "___________________________________ \n";
+  returnStr += "|                 LEADERBOARD                  | \n";
+  returnStr += "___________________________________ \n";
+  //var returnStr = "";
+  var documentProperties = PropertiesService.getDocumentProperties();
+  var userProperties = PropertiesService.getUserProperties();
+  var userData = userProperties.getProperties();
+  Logger.log(userData);
+  var leaderboardData = documentProperties.getProperties();
+  Logger.log(leaderboardData);
+  for (var exercise in leaderboardData) {
+    returnStr += "| " + exercise + " | ";
+    var exerciseData = JSON.parse(leaderboardData[exercise]);
+    Logger.log(exerciseData);
+    for (var user in exerciseData) {
+      var specificInfo = userData[exerciseData[user]];
+      if (specificInfo == null) {
+         returnStr += "@idkwho,"; 
+      }
+      else {
+        Logger.log(specificInfo);
+        specificInfo = JSON.parse(specificInfo);
+        returnStr += "@" + specificInfo[1] + ", ";
+      }
+    }
+    returnStr += "\n";
+  }
+  Logger.log(returnStr);
+  return returnStr;
+}
+
+function checkLeaderboard(userRow, exercise) {
+  var documentProperties = PropertiesService.getDocumentProperties();
+  var exerciseData = documentProperties.getProperty(exercise.toLowerCase());
+  exerciseData = JSON.parse(exerciseData);
+  if (exerciseData.includes(userRow)) {
+     return true; 
+  }
+  return false; 
+}
+
+function nominateSpreadsheet(nominer, nominee, exercise) {
+  //nominer = "junqing";
+  var nominerRow = -1;
+  var nominate = 0;
+  //nominee = 3;
+  //exercise = "Legs";
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  var lastCol = sheet.getLastColumn();
+  Logger.log(lastCol);
+  //FIND THE DEADLINE and return the col
+  var col = -1;
+  var userProperties = PropertiesService.getUserProperties();
+  var userData = userProperties.getProperties();
+  for (var user in userData) {
+    Logger.log(user);
+    if (userData[user].includes(nominer)) {
+       nominerRow = parseInt(user);
+       Logger.log(user);
+       break;
+    }
+  }
+  if (nominerRow == -1) {
+     return -7; 
+  }
+  Logger.log("Nominer Row:" + nominerRow);
+  var date = new Date();
+  var minCol = lastCol-1;
+  if (date.getTime() > data[2][minCol].getTime()) {
+    return -8;
+  }
+  while (date.getTime() < data[2][minCol].getTime()) {
+    minCol--;
+  }
+  minCol++; 
+  if (minCol % 3 == 0) { //nominates on thursday/friday -> minCol is saturday
+    var endOfWeek = minCol;
+  }
+  //NEED TO FIX THIS AS THE PERSON WHO NOMINATED FOR TUESDAY CAN SUBMIT EARLIER
+  //what if the person on leaderboard doesnt nominate by sunday
+  else if (minCol % 3 == 1) { //nominated on saturday/sunday/monday -> minCol becomes tuesday of the following week //only can do this if on the leaderboard
+    var onLeaderboard = checkLeaderboard(nominerRow, exercise);
+    if (!onLeaderboard) { //not on leaderboard
+      if (date.getDay() == 0 || date.getDay() == 7) { //if its a sunday or a  saturday
+        Logger.log("You are not on the leaderboard for this exercise. You don't have RIGHTS to nominate!");
+        return -5;  
+      }
+      else { // monday
+          endOfWeek = minCol+2;
+      }
+    }
+    else {       //on leaderboard
+      var endOfWeek = -1;
+      col = minCol;
+    }
+  }
+  else { //nominates on tuesday/wednesday -> minCol is thursday
+    var endOfWeek = minCol + 1;
+  }
+  Logger.log("End of week: " + endOfWeek); //checks the deadline of the person who nominated in that week 
+  //only for those who nominating for a thurs/sat deadline
+  if (endOfWeek != -1) { //endOfWeek = -1 means that they are leaderboard people, so no need to check
+    for (var j = endOfWeek-2; j < endOfWeek; j++) {  //this finds the next deadline after the person who nominated, but only for tues/thursday
+      if (data[nominerRow][j] != "") {
+        if (data[nominerRow][j].toLowerCase() == exercise.toLowerCase() || data[nominerRow+1][j].toLowerCase() == exercise.toLowerCase()) {
+          col = j+1; //col can only be thursday or saturday
+          Logger.log(col);
+          break;
+        }
+      }
+    }
+    //minCol is either thursday or saturday since endOfWeek != -1
+    if (col < minCol) {  //if deadline over, automatically go to next deadline, e.g. minCol is saturday (person nominated on tues/wed) but col is thursday
+      //i think not possible minCol is thursday and col is tuesday since from the earlier loop, col can only be endOfWeek-1 (thurs)/ endOfWeek (sat)
+      col = minCol;
+    }
+    if (j == endOfWeek) { //if loop completes without finding that exercise for the nominer
+      //this might be triggered if the person nominates on thursday (endOfWeek is saturday, not -1) but the person's deadline is saturday
+      if (data[nominerRow][j].toLowerCase() == exercise.toLowerCase() || data[nominerRow+1][j].toLowerCase() == exercise.toLowerCase()) {
+          Logger.log(" Can't nominate since your deadline is due Saturday.");
+          return -6;
+      }
+      else {
+        Logger.log("You haven't been nominated for this exercise this week");
+        return -1;
+      }
+    }
+  }
+  //if leaderboard, then need to check the following week for the nominee
+  var count = 0;
+  if (endOfWeek == -1) { //col, mincol is tuesday
+    endOfWeek = col+2; 
+  }
+  //check if the person has been nominated for that exercise in that week
+  for (var y = endOfWeek-2; y <= endOfWeek; y++) {
+    for (var x = 0; x < 2; x++) {
+      if (data[nominee+x][y] == exercise) {
+        Logger.log("Already completed/been nominated for the exercise in the week.");
+        return -2;
+      }
+      if (data[nominee+x][y] != "") { //if not empty in that week -> add
+         count++; 
+      }
+    }
+  }
+  if (count >= 3) { // if more than 3 exercises that week
+     Logger.log("Count :"+ count);
+     return -3; 
+  }
+  if (data[nominee][col] == "") { //if the spot empty
+     Logger.log("HERE");
+     var textcolour = getFontColour(exercise);
+     sheet.getRange(nominee+1,col+1).setValue(exercise);
+     sheet.getRange(nominee+1,col+1).setFontColor(textcolour);
+     sheet.getRange(nominee+1,col+1).setFontWeight("bold");
+     nominate = true;
+     return 1;
+  }
+  else if (data[nominee+1][col] == "") { //if the spot empty
+     Logger.log("THERE");
+     var textcolour = getFontColour(exercise);
+     sheet.getRange(nominee+2, col+1).setValue(exercise);
+     sheet.getRange(nominee+2, col+1).setFontColor(textcolour);
+     sheet.getRange(nominee+2, col+1).setFontWeight("bold");
+     nominate = true;
+     return 1;
+  }
+  if (data[nominee][col] != "" && data[nominee+1][col] != "") {
+    Logger.log("At quota for that deadline.");
+    return -4;
+  }
+  return nominate;
+  //add the reduction of possible nominations for LEADERBOARD
+}
+
+function checkNominatePermissions(username) {
+  var nominations = -1;
+  var userProperties = PropertiesService.getUserProperties();
+  for (var user in userProperties) {
+    var userData = JSON.parse(userProperties.getProperty(user));
+    if (userData.includes(username)) {
+       nominations = userData[2];
+       break;
+    }
+  }
+  return (nominations != -1 && nominations > 0);
+}
+
+function calcDataWeekNom(input) {
+  var dataNom = {};
+  //input = "Arms";
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  //var date = new Date("05-05-2020");
+  var date = new Date();
+  var lastCol = sheet.getLastColumn();
+  Logger.log(lastCol);
+  if (date.getTime() >= data[2][lastCol-1].getTime()) {
+     Logger.log("Haven't included the date.");
+     return -1;
+  }
+  var minCol = lastCol-1;
+  while (date.getTime() < data[2][minCol].getTime()) { //if Saturday, 
+    minCol--;
+  }
+  Logger.log("day:" + date.getDay());
+  Logger.log("Mincol:"+minCol);
+  if (minCol % 3 == 0) {
+    if (date.getDay() <= 1) { //if asks on a monday/sunday
+      var endOfWeek = minCol + 3;
+    }
+    else { //asks on a sunday/saturday
+      var endOfWeek = minCol;
+    }
+  }
+  else { //if friday -> mincol is thursday
+    var endOfWeek = minCol + (3-minCol%3);
+  }
+  Logger.log("End of week:" + endOfWeek);
+  for (var i = 3 ; i < data.length; i += 2) {//for every name
+     var count = 0;
+     Logger.log("i"+ i);
+     for (var y = endOfWeek-2; y <= endOfWeek; y++) {
+        for (var x = 0; x < 2; x++) {
+          if (input == "") {
+            if (data[i+x][y] != input) { //if not empty in that week -> add //if EXERCISE SPECIFIC
+              count++; 
+            }
+          }
+          else {
+            if (data[i+x][y] == input) { //if not empty in that week -> add //if EXERCISE SPECIFIC
+               count++; 
+             }
+          }
+        }
+      }
+      Logger.log("Count: " + count);
+      if (dataNom.hasOwnProperty(String(count))) {
+        dataNom[String(count)].push(data[String(i)][0]);
+      }
+      else {
+        dataNom[String(count)] = [data[String(i)][0]];
+      }
+   }
+   Logger.log(dataNom);
+   dataNom = getNomData(dataNom);
+   Logger.log(dataNom);
+   return dataNom;
+}
+
+function getNomData(dataNom) {
+  var returnStr = "";
+  for (var key in dataNom) {
+    returnStr += key + " times: ";
+    for (var name in dataNom[key]) {
+      returnStr += dataNom[key][name] + ", ";
+    }
+    returnStr += "\n \n";
+  }
+  return returnStr;
+}
+  
 function doPost(e) {
   var contents = JSON.parse(e.postData.contents);
   //GmailApp.sendEmail(Session.getEffectiveUser().getEmail(), "Message sent to bot", JSON.stringify(contents,null,4));
   var data = SpreadsheetApp.getActiveSheet().getDataRange().getValues();
   if (contents.callback_query) {
-    var id_callback = contents.callback_query.from.id;
+    var id_callback = contents.callback_query.message.chat.id;
     var name = contents.callback_query.from.username;
     var callback_query_data = contents.callback_query.data.split(" ");
-    if (callback_query_data[0] == "Name") {
+    if (callback_query_data[0] == "Name") { //nominations
       var nameRow = callback_query_data[1];
+      //askforPermission(nameRow);
       var exercise = callback_query_data[2];
-      //sendText2(id_callback, "HERE");
-      //sendText2(id_callback, nameRow);
       nameRow = parseInt(nameRow);
-      if (nominateSpreadsheet(nameRow, exercise)) {
-        //send to the user as well, send to the group
-        sendText2(id_callback, "HEY");
+      var nominate = nominateSpreadsheet(name, nameRow, exercise);
+      if (nominate > 0) {
         var userProperties = PropertiesService.getUserProperties();
         var groupData = userProperties.getProperty("group");
         groupData = JSON.parse(groupData);
@@ -448,37 +708,61 @@ function doPost(e) {
             userData = JSON.parse(userData);
             sendText2(parseInt(userData[0]), "You have been nominated by @" + name + " for " + exercise);
         }
-        //updateData(data[nameRow][0], exercise); //NOT CALLED FOR SOME FKING REASON>
       }
-      else {
-        sendText2(id_callback, data[nameRow][0] + " already at quota/has been nominated for that exercise, please nominate another person.");
+      else if (nominate == -1) { 
+        sendText2(id_callback, "You haven't been nominated for this exercise!");
+      }
+      else if (nominate == -2) { //already completed exercise that week
+        sendText2(id_callback, data[nameRow][0] + " has been nominated for that exercise in that week, please nominate another person.");
         handleNominate(id_callback, exercise);
+      }
+      else if (nominate == -3) { //more than 3 exercises
+        sendText2(id_callback, data[nameRow][0] + " has been nominated for 3 exercises this week already. Be kind and nominate another person!!");
+        handleNominate(id_callback, exercise);
+      }
+      else if (nominate == -4) { //quota for that deadline
+        sendText2(id_callback, data[nameRow][0] + " has been nominated for 2 exercises for that deadline already. Be kind and nominate another person!!");
+        handleNominate(id_callback, exercise);
+      }
+      else if (nominate == -5) {
+        sendText2(id_callback, "You are not on the leaderboard for this exercise. You don't have RIGHTS!");
+      }
+      else if (nominate == -6) {
+        sendText2(id_callback, "Deadline is Saturday, you can't nominate!");
+      }
+      else if (nominate == -7) {
+        sendText2(id_callback, "Details not included yet. Please call /start (name)");
+      }
+      else if (nominate == -8) {
+        sendText2(id_callback, "Date not included yet!");
       }
     }
     else if (callback_query_data[0] == "Exercise") {
       exercise = callback_query_data[1];
-      sendText2(id_callback, exercise);
+      sendText2(id_callback, exercise + " chosen.");
       if (callback_query_data[2] == "nominate") {
         handleNominate(id_callback, exercise);
       }
       else if (callback_query_data[2] == "whotonominate") {
+        var dataExerciseWeek = calcDataWeekNom(exercise);
+        sendText2(id_callback, "This week: \n" + dataExerciseWeek);
         var dataExercise = getData(exercise);
-        sendText2(id_callback, "Here you go! :) \n" + dataExercise);
+        sendText2(id_callback, "Summary:  \n" + dataExercise);
       }
     }
   }
   else if (contents.message) {
     var text = contents.message.text;
-    var id = contents.message.chat.id;
+    var chat_id = contents.message.chat.id;
+    var user_id = contents.message.from.id;
     var username = contents.message.from.username;
     var name = contents.message.chat.first_name + " " + contents.message.chat.last_name;
     var text = contents.message.text; 
-    //sendText2(id, text);
+    sendText2(chat_id, text + " sent to bot.");
     if (contents.message.hasOwnProperty("entities")) {
       //Logger.log("HERE");
       if (contents.message.entities[0].type == "bot_command") {
-        //sendText2(id, "yay");
-        handleCommands(id, text, username);
+        handleCommands(chat_id, text, username, user_id);
       }
     }
   }
@@ -489,63 +773,99 @@ function handleNominate(id, exercise) {
    sendText(id, "Who would you like to nominate?", keyBoard); 
 }
 
-function handleCommands(id, text, username) {
+function handleCommands(id, text, username, user_id) {
   if (text == "/nominate") {
+     //checkNominatePermissions(username);
      var keyBoard = getExercises("nominate");
      sendText(id, "What exercise are you nominating for?", keyBoard);
   }
   else if (text == "/whotonominate") { //get data
+    sendText(id, "How many times each person has exercised/been nominated for that week: " + calcDataWeekNom(""));
     var keyBoard = getExercises("whotonominate");
     sendText(id, "What exercise are you interested in finding out about?", keyBoard);    
   }
   else if (text.includes("/submit")) { //submit video
     var command = text.split(" ");
-    var name = command[1];
-    var exercise = command[2];
+    var exercise = command[1];
     var exercises = ["arms", "butt", "cardio", "core", "legs", "stretching"];
-    if (exercises.includes(exercise)) {      
-      var nameRow = getRowfromName(name);
-      if (nameRow != -1) {
-        if (submitVideo(nameRow, exercise)) {
-          sendText2(id, "Successfully submitted. Nice work " + name + "!");
-        }
-        else {
-          sendText2(id, "You aren't actually required to do this... but good job!");
-        }
-      }
-      else {
-        sendText2(id, "No such person.");
+    if (exercises.includes(exercise)) {    
+      var submitted = submitVideo(username, exercise);
+       if (submitted == 1) {
+         sendText2(id, "Successfully submitted. Nice work @" + username + "!");
+       }
+       else if (submitted == 0) {
+         sendText2(id, "You aren't actually required to do this... but good job!");
+       }
+      else if (submitted == -1) {
+         sendText2(id, "Details not registered yet.");
       }
     }
     else {
       sendText2(id, "No such exercise.");
     }
   }
-  else if (text.includes("/checkoutstanding")) { //outstanding
-    var command = text.split(" ");
-    var name = command[1];
+  else if (text == "/checkoutstanding") { //outstanding
+    var userProperties = PropertiesService.getUserProperties();
+    var userData = userProperties.getProperties();
+    var reqUser = "";
+    for (var user in userData) {
+      Logger.log(user);
+      if (userData[user].includes(username)) {
+        reqUser = user;
+        sendText2(id,checkOutstanding(parseInt(reqUser)));
+        break;
+      }
+    }
+    if (reqUser == "") {
+      Logger.log("Your details are not included yet.");
+      sendText2(id, "Your details are not included yet.");
+    }
     var nameRow = getRowfromName(name);
-    if (nameRow != -1) {
-      sendText2(id,checkOutstanding(id, nameRow));
-    }
-    else {
-      sendText2(id, "No such person.");
-    }
   }
   else if (text == "/help") {
-    sendText2(id, "Hi! This is your friendly bot for Paradigymmers! There are 4 commands in total (5, including this.) \n "
+    sendText2(id, "Hi! This is your friendly bot for Paradigymmers! There are 5 main commands in total (6, including this.) \n "
               + "/nominate: This will prompt you to nominate someone. \n"
               + "/whotonominate: This will provide data on the number of times an exercise is done by each person, so pick someone who has " 
               + "not done the exercise often! \n"
               + "/submit: Please use this command while sending in your video! "
-              + "When submitting a video, please enter /submit (name) (exercise). e.g. /submit yiik arms \n "
-              + "/checkoutstanding: This command enables you to check the outstanding records of a person. To use it, enter /checkoutstanding (name)"
-              + "e.g. /checkoutstanding yiik \n"
-              + "When starting, please do /start (name)");
+              + "When submitting a video, please enter /submit (exercise). e.g. /submit  arms \n "
+              + "/checkoutstanding: This command enables you to check the outstanding records of yourself. To use it, enter /checkoutstanding \n"
+              + "When starting, please do /start (name) \n"
+              + "/getleaderboard: You can also obtain information on the leaderboard!");
   }
   else if (text.includes("/start")) { //need to press /start (name)
-    sendText2(id, "Welcome to the paradigym bot!");
-    var name = text.split(" ")[1];
-    storeUserInfo(id, username, name);
+    var command = text.split(" ");
+    command.shift();
+    if (command.length == 0) {
+      sendText2(id, "Need to call /start (name)");
+      return;
+    }
+    if (command.length > 1) {
+      var name = command.join(" ");
+    }
+    else {
+      var name = command[0];
+    }
+    if (name == "group") {
+      var storeUser = storeUserInfo(id, username, name);
+    }
+    else {
+      var storeUser = storeUserInfo(user_id, username, name);
+    }
+    if (storeUser) {
+      sendText2(id, "Successful, welcome to the paradigym bot!");
+    }
+    else {
+      sendText2(id, "Wrong name!");
+    }
+  }
+  else if (text == "/resetleaderboard") { //only for yiik
+    resetLeaderboard();
+    sendText2(id, "Successfully reset.");
+  }
+  
+  else if (text == "/getleaderboard") {
+    var leaderBoard = getLeaderboard();
+    sendText2(id, leaderBoard);
   }
 }
