@@ -822,7 +822,7 @@ function handleCommands(id, text, username, user_id) {
       sendText2(id, "Wrong name!");
     }
   }
-  else if (text == "/resetleaderboard") { //only for yiik
+  else if (text == "/resetleaderboard") {
     resetLeaderboard();
     sendText2(id, "Successfully reset.");
   }
